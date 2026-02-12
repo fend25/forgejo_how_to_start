@@ -1,0 +1,33 @@
+name: build and push
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  test:
+    runs-on: docker
+    container:
+      image: node:25-alpine
+    env:
+      NODE_EXTRA_CA_CERTS: /etc/ssl/certs/ca-certificates.crt
+      DOMAIN: git.mytld
+    steps:
+      - name: Check SSL
+        run: |
+          apk add --no-cache curl
+          curl -I https://${{ env.DOMAIN }} 2>&1
+
+      - name: Login to registry
+        run: |
+          apk add --no-cache docker-cli
+          echo "${{ secrets.REGISTRY_TOKEN }}" | docker login ${{ env.DOMAIN }} -u ${{ vars.REGISTRY_USER }} --password-stdin
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build and push
+        run: |
+          docker build -t ${{ env.DOMAIN }}/${{ github.repository }}:latest .
+          docker push ${{ env.DOMAIN }}/${{ github.repository }}:latest

@@ -1,0 +1,66 @@
+services:
+  forgejo:
+    image: codeberg.org/forgejo/forgejo:14
+    container_name: forgejo
+    environment:
+      - USER_UID=1005
+      - USER_GID=1005
+    restart: always
+    networks:
+      - forgejo
+    volumes:
+      - ./forgejo:/data
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/ssl/certs/ca-certificates.crt:/etc/ssl/certs/ca-certificates.crt:ro
+    ports:
+      - '8080:3000'
+      - '2222:22'
+
+  forgejo_docker:
+    image: code.forgejo.org/oci/docker:dind
+    container_name: forgejo_docker
+    privileged: true
+    command: ['dockerd', '-H', 'tcp://0.0.0.0:2375', '-H', 'unix:///var/run/docker.sock', '--tls=false']
+    restart: unless-stopped
+    environment:
+      DOCKER_HOST: forgejo_docker
+      DOCKER_TLS_CERTDIR: ""
+    volumes:
+      - dind_data:/var/lib/docker
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/ssl/certs/ca-certificates.crt:/etc/ssl/certs/ca-certificates.crt:ro
+    networks:
+      - forgejo
+
+  forgejo_runner_1:
+    image: code.forgejo.org/forgejo/runner:12
+    container_name: forgejo_runner_1
+    depends_on:
+      forgejo_docker:
+        condition: service_started
+    environment:
+      - DOCKER_HOST=tcp://forgejo_docker:2375
+    volumes:
+      - ./runner_data_1:/data
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/ssl/certs/ca-certificates.crt:/etc/ssl/certs/ca-certificates.crt:ro
+    networks:
+      - forgejo
+    restart: unless-stopped
+    # На первом этапе запускаем контейнер от рута (user: 0:0) в режиме ожидания для регистрации:
+    #user: 0:0
+    #command: '/bin/sh -c "while :; do sleep 1; done"' # "forgejo-runner register" и "chown -R 1005:1005 /data"
+    user: 1005:1005
+    command: '/bin/sh -c "sleep 5; forgejo-runner daemon --config=config.yml"'
+
+
+networks:
+  forgejo:
+    external: false
+
+volumes:
+  dind_data:
+
